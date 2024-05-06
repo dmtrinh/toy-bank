@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: toy-bank
+  main:
+    allow-bean-definition-overriding: 'true'
+    banner-mode: "off"
+  data:
+    mongodb:
+      authentication-database: admin
+      database: toybankdb
+      uri: ${MONGODB_URI}
+
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0
+  observations:
+    annotations:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    loggers:
+      enabled: 'true'
+    health:
+      probes:
+        add-additional-paths: 'true'
+        enabled: 'true'
+      show-details: always
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT}
+
+idempotency:
+  service:
+    url: ${CACHING_SERVICE_ENDPOINT}
+
+server:
+  port: '8080'

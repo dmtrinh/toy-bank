@@ -1,0 +1,157 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.5'
+	id 'io.spring.dependency-management' version '1.1.4'
+	id 'org.graalvm.buildtools.native' version '0.9.28'
+	id 'jacoco'
+	id "org.sonarqube" version "4.3.1.3277"
+}
+
+group = 'com.thedarkside'
+version = '0.0.1-SNAPSHOT'
+
+//otelJava.moduleName.set("io.opentelemetry.exporter.zipkin")
+
+java {
+	sourceCompatibility = '17'
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+    implementation(platform(SpringBootPlugin.BOM_COORDINATES))
+    implementation(platform("io.opentelemetry:opentelemetry-bom:1.37.0"))
+    implementation(platform("io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom-alpha:2.3.0-alpha"))
+
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.apache.commons:commons-lang3'
+	implementation 'org.modelmapper:modelmapper:3.2.0'
+	implementation 'io.micrometer:micrometer-tracing-bridge-brave'
+	implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+// See:  https://opentelemetry.io/docs/languages/java/automatic/spring-boot/
+//    implementation("io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter")
+//    implementation("io.opentelemetry.contrib:opentelemetry-samplers:1.33.0-alpha")
+
+// Manual instrumentation with Zipkin:
+//   https://github.com/open-telemetry/opentelemetry-java-examples/tree/main/zipkin
+    implementation("io.opentelemetry:opentelemetry-api")
+    implementation("io.opentelemetry:opentelemetry-sdk")
+    implementation("io.opentelemetry:opentelemetry-exporter-zipkin")
+}
+
+testing {
+    suites { 
+        test { 
+            useJUnitJupiter() 
+            
+            targets.all {
+                testTask.configure {
+                    systemProperty 'spring.config.location', file(project.projectDir).absolutePath + '/application-local.yaml'
+                }
+            }
+        }
+    }
+}
+
+ext {
+    jacocoExcludes = [
+            '**/com/thedarkside/**/model/**'
+    ]
+}
+
+jacocoTestReport {
+    reports {
+        html.required = true
+        xml.required = true
+    }
+    afterEvaluate {
+        excludedClassFilesForReport(classDirectories)
+    }
+}
+
+jacocoTestCoverageVerification {
+    afterEvaluate {
+        excludedClassFilesForReport(classDirectories)
+    }
+
+    violationRules {
+        rule {
+            limit {
+                counter = 'INSTRUCTION'
+                value = 'COVEREDRATIO'
+                minimum = 0.01
+            }
+        }
+    }
+
+}
+
+private excludedClassFilesForReport(classDirectories) {
+    classDirectories.setFrom(files(classDirectories.files.collect {
+        fileTree(dir: it,
+                exclude: jacocoExcludes
+        )
+    }))
+}
+
+jacoco {
+    toolVersion = "0.8.10"
+}
+
+check.dependsOn jacocoTestCoverageVerification
+jacocoTestCoverageVerification.dependsOn jacocoTestReport
+
+sonarqube {
+    properties {
+        property "sonar.projectKey", "toy-bank"
+        property 'sonar.coverage.exclusions', jacocoExcludes
+    }
+}
+
+// Extend built-in bootRun task to use config for local development
+task bootRunLocal(type: org.springframework.boot.gradle.tasks.run.BootRun, dependsOn: 'test') {
+	description 'Executes bootRun with application-local.yaml as the Spring config'
+	group 'application'
+	mainClass = bootRun.mainClass
+    classpath = bootRun.classpath
+    systemProperty 'spring.config.location', file(project.projectDir).absolutePath + '/application-local.yaml'
+}
+
+task dockerComposeDown(type: Exec) {
+    commandLine 'docker', 'compose', 'down'
+}
+
+task dockerImagePrune(type: Exec) {
+    commandLine 'docker', 'image', 'prune', '-f'
+
+    mustRunAfter 'buildImage'
+}
+
+task buildImage(type: Exec, dependsOn: [ 'dockerComposeDown', 'assemble' ]) {
+    description "Builds a new Docker image and remove any old images"
+
+    commandLine 'docker', 'build', '-t', 'thedarkside/toy-bank', '.'
+
+    mustRunAfter 'assemble'
+    finalizedBy 'dockerImagePrune'
+}
+
+defaultTasks 'assemble', 'test'

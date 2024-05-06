@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: toy-bank
+  main:
+    allow-bean-definition-overriding: 'true'
+  data:
+    mongodb:
+      authentication-database: admin
+      database: toybankdb
+      uri: mongodb://root:password@localhost:27017
+
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0
+  observations:
+    annotations:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    loggers:
+      enabled: 'true'
+    health:
+      probes:
+        add-additional-paths: 'true'
+        enabled: 'true'
+      show-details: always
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+
+otel:
+  traces:
+    exporter: zipkin
+  exporter:
+    zipkin::
+      endpoint: http://localhost:9411/api/v2/spans
+
+idempotency:
+  service:
+    url: http://localhost:9012/caching-service/cache
+
+server:
+  port: '8080'
